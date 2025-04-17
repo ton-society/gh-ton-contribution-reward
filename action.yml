@@ -33,7 +33,8 @@ runs:
         response=$(curl -s -X POST "https://society.ton.org/v1/activities/${{ inputs.activity_id }}/allowlist/github-ids/${{ inputs.github_user_id }}" \
           -H "x-api-key: ${{ inputs.X_API_KEY }}" \
           -H "x-partner-id: ${{ inputs.X_PARTNER_ID }}" \
-          -H "Content-Type: application/json")
+          -H "Content-Type: application/json" \
+          -d '{}')
 
         echo "Response: $response"
         reward_link=$(echo "$response" | jq -r '.data.reward_link_url')
