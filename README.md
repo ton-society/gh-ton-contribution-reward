@@ -14,6 +14,10 @@ on:
     types:
       - closed
 
+permissions:
+  contents: read
+  pull-requests: write
+
 jobs:
   allowlist_user:
     if: github.event.pull_request.merged == true
