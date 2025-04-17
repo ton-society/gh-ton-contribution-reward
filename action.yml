@@ -1,0 +1,60 @@
+name: "Allowlist GitHub User"
+
+description: "This action sends a POST request to add a new entry in TON Society ID Github allowlist when a given Github user's PR is merged."
+
+inputs:
+  activity_id:
+    description: "The activity ID"
+    required: true
+  github_user_id:
+    description: "The GitHub user ID to be added to the allowlist"
+    required: true
+  github_token:
+    description: "GitHub token to comment on PR"
+    required: true
+
+secrets:
+  X_API_KEY:
+    description: "API key for authentication"
+    required: true
+  X_PARTNER_ID:
+    description: "Partner ID for authentication"
+    required: true
+
+runs:
+  using: "composite"
+  steps:
+    - name: Install jq
+      shell: bash
+      run: sudo apt-get install jq -y
+
+    - name: Call Allowlist API and store the reward link
+      id: call_api
+      shell: bash
+      run: |
+        response=$(curl -s -X POST "https://society.ton.org/v1/activities/${{ inputs.activity_id }}/allowlist/github-ids/${{ inputs.github_user_id }}" \
+          -H "x-api-key: ${{ secrets.X_API_KEY }}" \
+          -H "x-partner-id: ${{ secrets.X_PARTNER_ID }}" \
+          -H "Content-Type: application/json")
+
+        echo "Response: $response"
+        reward_link=$(echo "$response" | jq -r '.data.reward_link_url')
+        echo "reward_link_url=$reward_link" >> "$GITHUB_OUTPUT"
+
+    - name: Comment reward link on PR
+      shell: bash
+      env:
+        GITHUB_TOKEN: ${{ inputs.github_token }}
+      run: |
+        pr_number=$(jq --raw-output .pull_request.number "$GITHUB_EVENT_PATH")
+        pr_author=$(jq --raw-output .pull_request.user.login "$GITHUB_EVENT_PATH")
+        repo="${{ github.repository }}"
+        reward_link="${{ steps.call_api.outputs.reward_link_url }}"
+
+        comment_body="🎉 Hey @${pr_author}, you've been allowlisted!\nHere’s your reward link: [$reward_link]($reward_link)"
+
+        curl -s -X POST \
+          -H "Authorization: Bearer $GITHUB_TOKEN" \
+          -H "Content-Type: application/json" \
+          -d "$(jq -n --arg body "$comment_body" '{body: $body}')" \
+          "https://api.github.com/repos/$repo/issues/$pr_number/comments"
