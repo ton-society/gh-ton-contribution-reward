@@ -3,12 +3,6 @@ name: "Allowlist GitHub User"
 description: "This action sends a POST request to add a new entry in TON Society ID Github allowlist when a given Github user's PR is merged."
 
 inputs:
-  activity_id:
-    description: "The activity ID"
-    required: true
-  github_user_id:
-    description: "The GitHub user ID to be added to the allowlist"
-    required: true
   github_token:
     description: "GitHub token to comment on PR"
     required: true
@@ -18,6 +12,15 @@ inputs:
   x_partner_id:
     description: "Partner ID for authentication"
     required: true
+  github_user_id:
+    description: "The GitHub user ID to be added to the allowlist"
+    required: true
+  activity_id:
+    description: "The activity ID"
+    required: true
+  xps:
+    description: "Optional reward xps"
+    required: false
 
 runs:
   using: "composite"
@@ -30,22 +33,31 @@ runs:
       id: call_api
       shell: bash
       run: |
-        echo "Sending allowlist request..."
-        response=$(curl -s -w "|||%{http_code}" -X POST "https://society.ton.org/v1/activities/${{ inputs.activity_id }}/allowlist/github-ids/${{ inputs.github_user_id }}" \
+        if [[ -n "${{ inputs.xps }}" ]]; then
+          echo "ℹ️ Including xps value: ${{ inputs.xps }}"
+          request_body=$(jq -n \
+            --arg xps "${{ inputs.xps }}" \
+            '{attributes: [{trait_type: "xps", value: $xps}]}')
+        else
+          echo "ℹ️ No xps provided. Sending empty request body."
+          request_body="{}"
+        fi
+
+        echo "➡️ Sending POST request..."
+        curl_output=$(mktemp)
+        http_code=$(curl -s -o "$curl_output" -w "%{http_code}" -X POST "https://society.ton.org/v1/activities/${{ inputs.activity_id }}/allowlist/github-ids/${{ inputs.github_user_id }}" \
           -H "x-api-key: ${{ inputs.x_api_key }}" \
           -H "x-partner-id: ${{ inputs.x_partner_id }}" \
           -H "Content-Type: application/json" \
-          -d '{}')
+          -d "$request_body")
 
-        # Split response and HTTP status
-        http_body=$(echo "$response" | cut -d '|' -f 1)
-        http_code=$(echo "$response" | awk -F '|||' '{print $NF}')
+        http_body=$(cat "$curl_output")
 
         echo "HTTP status: $http_code"
+        echo "Response body: $http_body"
 
-        if [[ "$http_code" != 2* ]]; then
+        if [[ "$http_code" -lt 200 || "$http_code" -ge 300 ]]; then
           echo "❌ API call failed with status $http_code"
-          echo "Response body: $http_body"
           exit 1
         fi
 
@@ -53,7 +65,6 @@ runs:
 
         if [ -z "$reward_link" ]; then
           echo "❌ reward_link_url not found in response."
-          echo "Response body: $http_body"
           exit 1
         fi
 
