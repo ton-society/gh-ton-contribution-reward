@@ -12,8 +12,8 @@ inputs:
   x_partner_id:
     description: "Partner ID for authentication"
     required: true
-  github_user_id:
-    description: "The GitHub user ID to be added to the allowlist"
+  github_pr_number:
+    description: "The Pull Request number where to leave a comment with the reward link"
     required: true
   activity_id:
     description: "The activity ID"
@@ -28,6 +28,16 @@ runs:
     - name: Install jq
       shell: bash
       run: sudo apt-get install jq -y
+
+    - name: Get PR Author's GitHub User ID
+      id: pr_author
+      shell: bash
+      run: |
+        pr_author_id=$(curl -s -H "Authorization: Bearer ${{ inputs.github_token }}" \
+          "https://api.github.com/repos/${{ github.repository }}/pulls/${{ inputs.github_pr_number }}" | jq -r '.user.id')
+
+        echo "PR Author's GitHub ID: $pr_author_id"
+        echo "pr_author_id=$pr_author_id" >> "$GITHUB_ENV"
 
     - name: Call Allowlist API and store reward link
       id: call_api
@@ -45,7 +55,7 @@ runs:
 
         echo "➡️ Sending POST request..."
         curl_output=$(mktemp)
-        http_code=$(curl -s -o "$curl_output" -w "%{http_code}" -X POST "https://society.ton.org/v1/activities/${{ inputs.activity_id }}/allowlist/github-ids/${{ inputs.github_user_id }}" \
+        http_code=$(curl -s -o "$curl_output" -w "%{http_code}" -X POST "https://society.ton.org/v1/activities/${{ inputs.activity_id }}/allowlist/github-ids/${{ env.pr_author_id }}" \
           -H "x-api-key: ${{ inputs.x_api_key }}" \
           -H "x-partner-id: ${{ inputs.x_partner_id }}" \
           -H "Content-Type: application/json" \
@@ -76,8 +86,7 @@ runs:
       env:
         GITHUB_TOKEN: ${{ inputs.github_token }}
       run: |
-        pr_number=$(jq --raw-output .pull_request.number "$GITHUB_EVENT_PATH")
-        pr_author=$(jq --raw-output .pull_request.user.login "$GITHUB_EVENT_PATH")
+        pr_author=$(jq --raw-output .user.login "$GITHUB_EVENT_PATH")
         repo="${{ github.repository }}"
         reward_link="${{ steps.call_api.outputs.reward_link_url }}"
 
@@ -92,4 +101,4 @@ runs:
           -H "Authorization: Bearer $GITHUB_TOKEN" \
           -H "Content-Type: application/json" \
           -d "$(jq -n --arg body "$comment_body" '{body: $body}')" \
-          "https://api.github.com/repos/$repo/issues/$pr_number/comments"
+          "https://api.github.com/repos/$repo/issues/${{ inputs.github_pr_number }}/comments"
