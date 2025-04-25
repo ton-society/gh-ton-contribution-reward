@@ -86,7 +86,7 @@ runs:
           exit 0
         fi
 
-        comment_body="🎉 Hey @${pr_author}, you've been allowlisted!\nHere’s your reward link: [$reward_link]($reward_link)"
+        comment_body="🎉 Hey @${pr_author}, you've been allowlisted! Here’s your reward link: [$reward_link]($reward_link)"
 
         curl -s -X POST \
           -H "Authorization: Bearer $GITHUB_TOKEN" \
