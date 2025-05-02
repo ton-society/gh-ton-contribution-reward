@@ -29,15 +29,21 @@ runs:
       shell: bash
       run: sudo apt-get install jq -y
 
-    - name: Get PR Author's GitHub User ID
+    - name: Get PR Author's GitHub User ID and Login
       id: pr_author
       shell: bash
       run: |
-        pr_author_id=$(curl -s -H "Authorization: Bearer ${{ inputs.github_token }}" \
-          "https://api.github.com/repos/${{ github.repository }}/pulls/${{ inputs.github_pr_number }}" | jq -r '.user.id')
+        pr_data=$(curl -s -H "Authorization: Bearer ${{ inputs.github_token }}" \
+          "https://api.github.com/repos/${{ github.repository }}/pulls/${{ inputs.github_pr_number }}")
+
+        pr_author_id=$(echo "$pr_data" | jq -r '.user.id')
+        pr_author_login=$(echo "$pr_data" | jq -r '.user.login // empty')
 
         echo "PR Author's GitHub ID: $pr_author_id"
+        echo "PR Author's Login: $pr_author_login"
+
         echo "pr_author_id=$pr_author_id" >> "$GITHUB_ENV"
+        echo "pr_author_login=$pr_author_login" >> "$GITHUB_ENV"
 
     - name: Call Allowlist API and store reward link
       id: call_api
@@ -86,7 +92,6 @@ runs:
       env:
         GITHUB_TOKEN: ${{ inputs.github_token }}
       run: |
-        pr_author=$(jq --raw-output .user.login "$GITHUB_EVENT_PATH")
         repo="${{ github.repository }}"
         reward_link="${{ steps.call_api.outputs.reward_link_url }}"
 
@@ -95,7 +100,12 @@ runs:
           exit 0
         fi
 
-        comment_body="🎉 Hey @${pr_author}, you've been allowlisted! Here’s your reward link: [$reward_link]($reward_link)"
+        comment_body="🎉 Hi there, thanks for your contribution! Here’s your reward [link]($reward_link). Receive more rewards and grow your reputation in the TON Developers league"
+
+        pr_author="${{ env.pr_author_login }}"
+        if [ -z "$pr_author" ]; then
+          comment_body="🎉 Hey there @${pr_author}, thanks for your contribution! Here’s your reward [link]($reward_link). Receive more rewards and grow your reputation in the TON Developers league"
+        fi
 
         curl -s -X POST \
           -H "Authorization: Bearer $GITHUB_TOKEN" \
