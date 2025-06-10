@@ -1,10 +1,12 @@
-name: "Allowlist GitHub User"
-
-description: "This action sends a POST request to add a new entry in TON Society ID Github allowlist when a given Github user's PR is merged."
+name: "SBT Reward on PR Merge"
+description: "Awards user SBT reward for merged PR"
+branding:
+  icon: "chevron-right"
+  color: "blue"
 
 inputs:
   github_token:
-    description: "GitHub token to comment on PR"
+    description: "GitHub token used to read PR details and post comments/labels"
     required: true
   x_api_key:
     description: "API key for authentication"
@@ -12,103 +14,120 @@ inputs:
   x_partner_id:
     description: "Partner ID for authentication"
     required: true
-  github_pr_number:
-    description: "The Pull Request number where to leave a comment with the reward link"
-    required: true
-  activity_id:
-    description: "The activity ID"
-    required: true
-  xps:
-    description: "Optional reward xps"
-    required: false
 
 runs:
   using: "composite"
   steps:
-    - name: Install jq
-      shell: bash
-      run: sudo apt-get install jq -y
+    - name: Process commit and reward
+      uses: actions/github-script@v7
+      with:
+        github-token: ${{ inputs.github_token }}
+        # language=js
+        script: |
+          const commit_sha = context.payload.after;
 
-    - name: Get PR Author's GitHub User ID and Login
-      id: pr_author
-      shell: bash
-      run: |
-        pr_data=$(curl -s -H "Authorization: Bearer ${{ inputs.github_token }}" \
-          "https://api.github.com/repos/${{ github.repository }}/pulls/${{ inputs.github_pr_number }}")
+          // Get PR associated with this commit
+          const prs = await github.rest.repos.listPullRequestsAssociatedWithCommit({
+            ...context.repo,
+            commit_sha
+          });
 
-        pr_author_id=$(echo "$pr_data" | jq -r '.user.id')
-        pr_author_login=$(echo "$pr_data" | jq -r '.user.login // empty')
+          if (!prs.data || prs.data.length === 0) {
+            core.notice(`No PR associated with commit ${commit_sha}`);
+            return;
+          }
 
-        echo "PR Author's GitHub ID: $pr_author_id"
-        echo "PR Author's Login: $pr_author_login"
+          // Find the merged PR
+          const mergedPR = prs.data.find(pr => pr.merged_at !== null);
+          if (!mergedPR) {
+            core.notice(`No merged PR found for commit ${commit_sha}`);
+            return;
+          }
 
-        echo "pr_author_id=$pr_author_id" >> "$GITHUB_ENV"
-        echo "pr_author_login=$pr_author_login" >> "$GITHUB_ENV"
+          const pr_number = mergedPR.number;
+          const user_id = mergedPR.user.id;
+          const user_login = mergedPR.user.login;
+          const pr_title = mergedPR.title;
 
-    - name: Call Allowlist API and store reward link
-      id: call_api
-      shell: bash
-      run: |
-        if [[ -n "${{ inputs.xps }}" ]]; then
-          echo "ℹ️ Including xps value: ${{ inputs.xps }}"
-          request_body=$(jq -n \
-            --arg xps "${{ inputs.xps }}" \
-            '{attributes: [{trait_type: "xps", value: $xps}]}')
-        else
-          echo "ℹ️ No xps provided. Sending empty request body."
-          request_body="{}"
-        fi
+          // Ensure that PR is approved
+          const reviews = (await github.rest.pulls.listReviews({ ...context.repo, pull_number: pr_number })).data;
+          const approvals = reviews.filter(review => review.state === 'APPROVED');
 
-        echo "➡️ Sending POST request..."
-        curl_output=$(mktemp)
-        http_code=$(curl -s -o "$curl_output" -w "%{http_code}" -X POST "https://society.ton.org/v1/activities/${{ inputs.activity_id }}/allowlist/github-ids/${{ env.pr_author_id }}" \
-          -H "x-api-key: ${{ inputs.x_api_key }}" \
-          -H "x-partner-id: ${{ inputs.x_partner_id }}" \
-          -H "Content-Type: application/json" \
-          -d "$request_body")
+          let score = 0;
+          let activity_id = 0;
+          let wallet = null;
 
-        http_body=$(cat "$curl_output")
+          // Only last reviewer comment is counted
+          for (const review of approvals) {
+            if (!review.body) continue;
 
-        echo "HTTP status: $http_code"
-        echo "Response body: $http_body"
+            const match_score = review.body.match(/SCORE\s*=\s*(-?\d+)/i);
+            if (!match_score) continue;
 
-        if [[ "$http_code" -lt 200 || "$http_code" -ge 300 ]]; then
-          echo "❌ API call failed with status $http_code"
-          exit 1
-        fi
+            const match_activity_id = review.body.match(/ACTIVITY_ID\s*=\s*(-?\d+)/i);
+            if (!match_activity_id) continue;
 
-        reward_link=$(echo "$http_body" | jq -r '.data.reward_link_url // empty')
+            const permission = (await github.rest.repos.getCollaboratorPermissionLevel({
+              ...context.repo,
+              username: review.user.login
+            })).data.permission;
 
-        if [ -z "$reward_link" ]; then
-          echo "❌ reward_link_url not found in response."
-          exit 1
-        fi
+            if (['admin', 'maintain', 'write'].includes(permission)) {
+              score = parseInt(match_score[1], 10);
+              activity_id = parseInt(match_activity_id[1], 10);
 
-        echo "✅ Received reward link: $reward_link"
-        echo "reward_link_url=$reward_link" >> "$GITHUB_OUTPUT"
+              const match_wallet = review.body.match(/WALLET\s*=\s*([A-Za-z0-9_-]+)/i);
+              if (match_wallet) {
+                wallet = match_wallet[1];
+              }
+            }
+          }
 
-    - name: Comment reward link on PR
-      shell: bash
-      env:
-        GITHUB_TOKEN: ${{ inputs.github_token }}
-      run: |
-        repo="${{ github.repository }}"
-        reward_link="${{ steps.call_api.outputs.reward_link_url }}"
+          if (activity_id === 0) {
+            core.notice(`No activity_id provided in the reviwer comment.`);
+            return;
+          }
 
-        if [ -z "$reward_link" ]; then
-          echo "⚠️ No reward link to comment. Skipping comment step."
-          exit 0
-        fi
+          const x_api_key = `${{ inputs.x_api_key }}`;
+          const x_partner_id = `${{ inputs.x_partner_id }}`;
+          const description = `Reward for the Pull Request #${pr_number} titled "${pr_title}"`;
+          const payload = { score, description };
+          const url = 'https://id.ton.org/v1/activities/${activity_id}/allowlist/';
+          if (wallet) {
+            url += `wallets/${wallet}`;
+          } else {
+            url += `github-ids/${user_id}`;
+          }
 
-        comment_body="🎉 Hi there, thanks for your contribution! Here’s your reward [link]($reward_link). Receive more rewards and grow your reputation in the TON Developers league"
+          const body = JSON.stringify(payload);
+          const response = await fetch(url, {
+            method: 'POST',
+            headers: {
+              'x-api-key': x_api_key,
+              'x-partner-id': x_partner_id,
+              'Content-Type': 'application/json'
+            },
+            body,
+          });
 
-        pr_author="${{ env.pr_author_login }}"
-        if [ -z "$pr_author" ]; then
-          comment_body="🎉 Hey there @${pr_author}, thanks for your contribution! Here’s your reward [link]($reward_link). Receive more rewards and grow your reputation in the TON Developers league"
-        fi
+          if (!response.ok) {
+            core.notice(`Failed to POST reward for activity_id=${activity_id}, user_id=${user_id}, score=${score}, status: ${response.status}`);
+            return;
+          }
 
-        curl -s -X POST \
-          -H "Authorization: Bearer $GITHUB_TOKEN" \
-          -H "Content-Type: application/json" \
-          -d "$(jq -n --arg body "$comment_body" '{body: $body}')" \
-          "https://api.github.com/repos/$repo/issues/${{ inputs.github_pr_number }}/comments"
+          const result = await response.json();
+          const reward_link = result.data.reward_link_url;
+
+          let noticeMsg = `🎉 Reward issued for activity_id=${activity_id} with score=${score}: ${reward_link}`;
+          let commentMsg = `🎉 @${user_login}, your reward is ready! [Claim it here](${reward_link})`;
+          if (wallet) {
+            noticeMsg = `🎉 Reward issued for activity_id=${activity_id} with score=${score} for wallet address ${wallet}: ${reward_link}`;
+            commentMsg = `🎉 @${user_login}, your reward for wallet address ${wallet} is ready! [Claim it here](${reward_link})`
+          }
+
+          core.notice(noticeMsg);
+          await github.rest.issues.createComment({
+            ...context.repo,
+            issue_number: pr_number,
+            body: commentMsg,
+          });
