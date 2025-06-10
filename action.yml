@@ -1,5 +1,5 @@
-name: "SBT Reward on PR Merge"
-description: "Awards user SBT reward for merged PR"
+name: "TON SBT Reward on PR Merge"
+description: "Awards user with TON SBT reward for merged PR"
 branding:
   icon: "chevron-right"
   color: "blue"
