@@ -92,7 +92,7 @@ runs:
           const x_partner_id = `${{ inputs.x_partner_id }}`;
           const description = `Reward for the Pull Request #${pr_number} titled "${pr_title}"`;
           const payload = { score, description };
-          const url = 'https://stg.globalsociety.cc/v1/activities/${activity_id}/allowlist/';
+          let url = `https://stg.globalsociety.cc/v1/activities/${activity_id}/allowlist/`;
           if (wallet) {
             url += `wallets/${wallet}`;
           } else {
@@ -111,7 +111,7 @@ runs:
           });
 
           if (!response.ok) {
-            core.notice(`Failed to POST reward for activity_id=${activity_id}, user_id=${user_id}, score=${score}, status: ${response.status}`);
+            core.notice(`Failed to POST reward for activity_id=${activity_id}, user_id=${user_id}, score=${score}, status: ${response.status} for URL ${url}`);
             return;
           }
 
