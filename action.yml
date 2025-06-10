@@ -92,7 +92,7 @@ runs:
           const x_partner_id = `${{ inputs.x_partner_id }}`;
           const description = `Reward for the Pull Request #${pr_number} titled "${pr_title}"`;
           const payload = { score, description };
-          const url = '${{ secrets.SBT_PLATFORM_API_URL }}/activities/${activity_id}/allowlist/';
+          const url = 'https://stg.globalsociety.cc/v1/activities/${activity_id}/allowlist/';
           if (wallet) {
             url += `wallets/${wallet}`;
           } else {
