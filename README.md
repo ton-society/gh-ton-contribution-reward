@@ -1,4 +1,4 @@
-# GitHub Contribution Reward Action
+# GitHub TON Contribution Reward Action
 
 This GitHub Action awards contributors with SBT (Soulbound Token) rewards upon successful PR merges. It listens for merged pull requests and issues rewards based on reviewer comments containing specific metadata.
 
@@ -64,7 +64,7 @@ jobs:
       pull-requests: write
     steps:
       - name: GH action to reward a contribution
-        uses: ton-society/github-contribution-reward@v1.1.0
+        uses: ton-society/gh-ton-contribution-reward@v1.1.0
         with:
           github_token: ${{ secrets.GITHUB_TOKEN }}
           x_api_key: ${{ secrets.X_API_KEY }}
