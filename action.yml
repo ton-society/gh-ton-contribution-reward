@@ -92,7 +92,7 @@ runs:
           const x_partner_id = `${{ inputs.x_partner_id }}`;
           const description = `Reward for the Pull Request #${pr_number} titled "${pr_title}"`;
           const payload = { score, description };
-          let url = `https://stg.globalsociety.cc/v1/activities/${activity_id}/allowlist/`;
+          let url = `https://id.ton.org/v1/activities/${activity_id}/allowlist/`;
           if (wallet) {
             url += `wallets/${wallet}`;
           } else {
