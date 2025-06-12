@@ -57,7 +57,7 @@ runs:
           const reviews = (await github.rest.pulls.listReviews({ ...context.repo, pull_number: pr_number })).data;
           const approvals = reviews.filter(review => review.state === 'APPROVED');
 
-          let score = 0;
+          let score = 1000; // by default
           let activity_id = ${{ inputs.activity_id }};
           let wallet = null;
 
@@ -65,19 +65,19 @@ runs:
           for (const review of approvals) {
             if (!review.body) continue;
 
-            const match_score = review.body.match(/SCORE\s*=\s*(-?\d+)/i);
-            if (!match_score) continue;
-
             const permission = (await github.rest.repos.getCollaboratorPermissionLevel({
               ...context.repo,
               username: review.user.login
             })).data.permission;
 
             if (['admin', 'maintain', 'write'].includes(permission)) {
-              score = parseInt(match_score[1], 10);
+              const match_score = review.body.match(/SCORE\s*=\s*(-?\d+)/i);
+              if (!match_score) {
+                score = parseInt(match_score[1], 10);
+              }
 
               const match_activity_id = review.body.match(/ACTIVITY_ID\s*=\s*(-?\d+)/i);
-              if (match_activity_id){
+              if (match_activity_id) {
                 activity_id = parseInt(match_activity_id[1], 10);
               };
 
@@ -88,6 +88,14 @@ runs:
             }
           }
 
+          if (score < 1000) {
+            core.notice(`score can be less than 1000`);
+            return;
+          }
+          if (score > 15000) {
+            core.notice(`score can be more than 15000`);
+            return;
+          }
           if (activity_id === 0) {
             core.notice(`No activity_id provided to the action.`);
             return;
