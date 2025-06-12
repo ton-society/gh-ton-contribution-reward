@@ -149,3 +149,9 @@ or, if no wallet specified:
 - Ensure reviewers have write/admin/maintain permission, otherwise their SCORE/ACTIVITY_ID/WALLET info in the comment is ignored.
 - The action will only reward the first valid approval with correct metadata.
 - The API endpoint and parameters are configured internally; you just need to provide the required secrets.
+
+---
+
+## 🙏 Acknowledgements
+
+Special thanks to [@tontech](https://t.me/tontech) for their contribution.
