@@ -14,6 +14,10 @@ inputs:
   x_partner_id:
     description: "Partner ID for authentication"
     required: true
+  activity_id:
+    description: "Activity identifier for which user is rewarded"
+    required: false
+    default: 0
 
 runs:
   using: "composite"
@@ -54,7 +58,7 @@ runs:
           const approvals = reviews.filter(review => review.state === 'APPROVED');
 
           let score = 0;
-          let activity_id = 0;
+          let activity_id = ${{ inputs.activity_id }};
           let wallet = null;
 
           // Only last reviewer comment is counted
@@ -64,9 +68,6 @@ runs:
             const match_score = review.body.match(/SCORE\s*=\s*(-?\d+)/i);
             if (!match_score) continue;
 
-            const match_activity_id = review.body.match(/ACTIVITY_ID\s*=\s*(-?\d+)/i);
-            if (!match_activity_id) continue;
-
             const permission = (await github.rest.repos.getCollaboratorPermissionLevel({
               ...context.repo,
               username: review.user.login
@@ -74,7 +75,11 @@ runs:
 
             if (['admin', 'maintain', 'write'].includes(permission)) {
               score = parseInt(match_score[1], 10);
-              activity_id = parseInt(match_activity_id[1], 10);
+
+              const match_activity_id = review.body.match(/ACTIVITY_ID\s*=\s*(-?\d+)/i);
+              if (match_activity_id){
+                activity_id = parseInt(match_activity_id[1], 10);
+              };
 
               const match_wallet = review.body.match(/WALLET\s*=\s*([A-Za-z0-9_-]+)/i);
               if (match_wallet) {
@@ -84,7 +89,7 @@ runs:
           }
 
           if (activity_id === 0) {
-            core.notice(`No activity_id provided in the reviwer comment.`);
+            core.notice(`No activity_id provided to the action.`);
             return;
           }
 
