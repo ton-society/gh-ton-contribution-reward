@@ -26,9 +26,36 @@ runs:
       uses: actions/github-script@v7
       with:
         github-token: ${{ inputs.github_token }}
-        # language=js
         script: |
           const commit_sha = context.payload.after;
+
+          // Get the commit details
+          const commit = await github.rest.repos.getCommit({
+            ...context.repo,
+            ref: commit_sha
+          });
+
+          const commit_author_login = commit.data.author?.login;
+          if (!commit_author_login) {
+            core.notice(`Commit author login not found for SHA: ${commit_sha}`);
+            return;
+          }
+
+          // Check collaborator permission
+          try {
+            const permission = (await github.rest.repos.getCollaboratorPermissionLevel({
+              ...context.repo,
+              username: commit_author_login
+            })).data.permission;
+
+            if (['write', 'maintain', 'admin'].includes(permission)) {
+              core.notice(`Commit author @${commit_author_login} has ${permission} permission. Skipping reward.`);
+              return;
+            }
+          } catch (err) {
+            core.notice(`Failed to check permission for @${commit_author_login}: ${err.message}`);
+            return;
+          }
 
           // Get PR associated with this commit
           const prs = await github.rest.repos.listPullRequestsAssociatedWithCommit({
@@ -61,7 +88,6 @@ runs:
           let activity_id = ${{ inputs.activity_id }};
           let wallet = null;
 
-          // Only last reviewer comment is counted
           for (const review of approvals) {
             if (!review.body) continue;
 
