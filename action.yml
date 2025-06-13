@@ -29,34 +29,6 @@ runs:
         script: |
           const commit_sha = context.payload.after;
 
-          // Get the commit details
-          const commit = await github.rest.repos.getCommit({
-            ...context.repo,
-            ref: commit_sha
-          });
-
-          const commit_author_login = commit.data.author?.login;
-          if (!commit_author_login) {
-            core.notice(`Commit author login not found for SHA: ${commit_sha}`);
-            return;
-          }
-
-          // Check collaborator permission
-          try {
-            const permission = (await github.rest.repos.getCollaboratorPermissionLevel({
-              ...context.repo,
-              username: commit_author_login
-            })).data.permission;
-
-            if (['write', 'maintain', 'admin'].includes(permission)) {
-              core.notice(`Commit author @${commit_author_login} has ${permission} permission. Skipping reward.`);
-              return;
-            }
-          } catch (err) {
-            core.notice(`Failed to check permission for @${commit_author_login}: ${err.message}`);
-            return;
-          }
-
           // Get PR associated with this commit
           const prs = await github.rest.repos.listPullRequestsAssociatedWithCommit({
             ...context.repo,
@@ -79,6 +51,22 @@ runs:
           const user_id = mergedPR.user.id;
           const user_login = mergedPR.user.login;
           const pr_title = mergedPR.title;
+
+          // Check collaborator permission
+          try {
+            const permission = (await github.rest.repos.getCollaboratorPermissionLevel({
+              ...context.repo,
+              username: user_login
+            })).data.permission;
+
+            if (['write', 'maintain', 'admin'].includes(permission)) {
+              core.notice(`PR author @${user_login} has ${permission} permission. Skipping reward.`);
+              return;
+            }
+          } catch (err) {
+            core.notice(`Failed to check permission for @${user_login}: ${err.message}`);
+            return;
+          }
 
           // Ensure that PR is approved
           const reviews = (await github.rest.pulls.listReviews({ ...context.repo, pull_number: pr_number })).data;
