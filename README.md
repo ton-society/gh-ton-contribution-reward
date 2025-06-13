@@ -99,14 +99,45 @@ jobs:
           activity_id: 123 # or ${{ secrets.ACTIVITY_ID }}
 ```
 
+Alternatively, the secrets can be read from the GitHub environments:
+```yaml
+name: Add GitHub User to Reward Allowlist on PR Merge
+
+on:
+  push:
+    branches:
+      - main
+      - master
+
+jobs:
+  reward:
+    runs-on: ubuntu-latest
+    environment: production  # ← Use your environment here
+    permissions:
+      contents: read
+      pull-requests: write
+    steps:
+      - name: GH action to reward a contribution
+        uses: ton-society/gh-ton-contribution-reward@v1.2.0
+        with:
+          github_token: ${{ secrets.GITHUB_TOKEN }}
+          x_api_key: ${{ secrets.X_API_KEY }}
+          x_partner_id: ${{ secrets.X_PARTNER_ID }}
+```
+
+
 ### 2. Set Your Secrets
 
+Add the following secrets in your repository settings under Settings > Secrets and variables > Actions:
 - GITHUB_TOKEN: Default GitHub token (provided automatically in GitHub Actions).
 - X_API_KEY: Your TON ID API key for authentication.
 - X_PARTNER_ID: Your partner ID for the TON ID platform.
 - ACTIVITY_ID (optional): Activity identifier, for which the user is rewarded.
 
-Add these secrets in your repository settings under Settings > Secrets and variables > Actions.
+Or if using GitHub environments:
+- Go to Settings → Environments → New environment
+- Name it something like production
+- Add the secrets
 
 To obtain `X_API_KEY` and `X_PARTNER_ID` refer to [TON ID SBT Platform](https://github.com/ton-society/sbt-platform).
 
