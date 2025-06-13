@@ -98,14 +98,14 @@ runs:
 
             if (['admin', 'maintain', 'write'].includes(permission)) {
               const match_score = review.body.match(/SCORE\s*=\s*(-?\d+)/i);
-              if (!match_score) {
+              if (match_score) {
                 score = parseInt(match_score[1], 10);
               }
 
               const match_activity_id = review.body.match(/ACTIVITY_ID\s*=\s*(-?\d+)/i);
               if (match_activity_id) {
                 activity_id = parseInt(match_activity_id[1], 10);
-              };
+              }
 
               const match_wallet = review.body.match(/WALLET\s*=\s*([A-Za-z0-9_-]+)/i);
               if (match_wallet) {
