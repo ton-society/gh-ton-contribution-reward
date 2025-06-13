@@ -65,7 +65,7 @@ jobs:
       pull-requests: write
     steps:
       - name: GH action to reward a contribution
-        uses: ton-society/gh-ton-contribution-reward@v1.3.0
+        uses: ton-society/gh-ton-contribution-reward@v1
         with:
           github_token: ${{ secrets.GITHUB_TOKEN }}
           x_api_key: ${{ secrets.X_API_KEY }}
@@ -91,7 +91,7 @@ jobs:
       pull-requests: write
     steps:
       - name: GH action to reward a contribution
-        uses: ton-society/gh-ton-contribution-reward@v1.3.0
+        uses: ton-society/gh-ton-contribution-reward@v1
         with:
           github_token: ${{ secrets.GITHUB_TOKEN }}
           x_api_key: ${{ secrets.X_API_KEY }}
