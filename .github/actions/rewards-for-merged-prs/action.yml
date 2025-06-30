@@ -1,0 +1,162 @@
+name: "TON SBT Reward for All Merged PRs"
+description: "Batch reward for merged PRs"
+
+inputs:
+  github_token:
+    description: "GitHub token used to read PR details and post comments/labels"
+    required: true
+  x_api_key:
+    description: "API key for authentication"
+    required: true
+  x_partner_id:
+    description: "Partner ID for authentication"
+    required: true
+  activity_id:
+    description: "Activity identifier for which user is rewarded"
+    required: true
+  per_page:
+    description: "Number of merged PRs to fetch"
+    required: false
+    default: "100"
+
+runs:
+  using: "composite"
+  steps:
+    - name: Batch reward for merged PRs
+      uses: actions/github-script@v7
+      with:
+        github-token: ${{ inputs.github_token }}
+        script: |
+          const activity_id = parseInt(`${{ inputs.activity_id }}`);
+          const x_api_key = `${{ inputs.x_api_key }}`;
+          const x_partner_id = `${{ inputs.x_partner_id }}`;
+          const per_page = parseInt(`${{ inputs.per_page }}`, 10) || 50;
+
+          const prs = await github.rest.pulls.list({
+            ...context.repo,
+            state: "closed",
+            per_page: per_page
+          });
+
+          for (const pr of prs.data) {
+            if (!pr.merged_at) continue;
+
+            const pr_number = pr.number;
+            const user_login = pr.user.login;
+            const user_id = pr.user.id;
+            const pr_title = pr.title;
+
+            try {
+              const permission = (await github.rest.repos.getCollaboratorPermissionLevel({
+                ...context.repo,
+                username: user_login
+              })).data.permission;
+
+              if (['write', 'maintain', 'admin'].includes(permission)) {
+                core.notice(`Skipping PR #${pr_number} by @${user_login} (permission: ${permission})`);
+                continue;
+              }
+            } catch (err) {
+              core.notice(`Failed to check permission for @${user_login}: ${err.message}`);
+              continue;
+            }
+
+            const comments = await github.rest.issues.listComments({
+              ...context.repo,
+              issue_number: pr_number,
+            });
+
+            const alreadyRewarded = comments.data.some(comment =>
+              comment.body.includes("your reward is ready") || comment.body.includes("your reward for wallet address")
+            );
+
+            if (alreadyRewarded) {
+              core.notice(`PR #${pr_number} by @${user_login} already rewarded. Skipping.`);
+              continue;
+            }
+
+            let score = 1000;
+            let wallet = null;
+
+            try {
+              const reviews = await github.rest.pulls.listReviews({
+                ...context.repo,
+                pull_number: pr_number
+              });
+
+              for (const review of reviews.data) {
+                if (!review.body) continue;
+
+                const permission = (await github.rest.repos.getCollaboratorPermissionLevel({
+                  ...context.repo,
+                  username: review.user.login
+                })).data.permission;
+
+                if (['admin', 'maintain', 'write'].includes(permission)) {
+                  const match_score = review.body.match(/SCORE\s*=\s*(-?\d+)/i);
+                  if (match_score) score = parseInt(match_score[1], 10);
+
+                  const match_wallet = review.body.match(/WALLET\s*=\s*([A-Za-z0-9_-]+)/i);
+                  if (match_wallet) wallet = match_wallet[1];
+                }
+              }
+            } catch (err) {
+              core.notice(`Failed to parse reviews for PR #${pr_number}: ${err.message}`);
+            }
+
+            if (score < 1000 || score > 15000) {
+              core.notice(`Invalid score ${score} for PR #${pr_number}. Skipping.`);
+              continue;
+            }
+
+            const description = `Reward for Pull Request #${pr_number}: "${pr_title}"`;
+            const payload = JSON.stringify({ score, description });
+
+            let url = `https://id.ton.org/v1/activities/${activity_id}/allowlist/`;
+            if (wallet) {
+              url += `wallets/${wallet}`;
+            } else {
+              url += `github-ids/${user_id}`;
+            }
+
+            try {
+              const response = await fetch(url, {
+                method: 'POST',
+                headers: {
+                  'x-api-key': x_api_key,
+                  'x-partner-id': x_partner_id,
+                  'Content-Type': 'application/json'
+                },
+                body: payload
+              });
+
+              if (!response.ok) {
+                core.notice(`❌ Failed to reward PR #${pr_number}. HTTP ${response.status}. Continuing...`);
+                continue;
+              }
+
+              const result = await response.json();
+              const reward_link = result.data.reward_link_url;
+
+              let noticeMsg = `🎉 Reward issued for PR #${pr_number} with score=${score}: ${reward_link}`;
+              let commentMsg = `🎉 @${user_login}, your reward is ready! [Claim it here](${reward_link})`;
+              if (wallet) {
+                noticeMsg = `🎉 Reward for wallet ${wallet} issued for PR #${pr_number} with score=${score}: ${reward_link}`;
+                commentMsg = `🎉 @${user_login}, your reward for wallet address ${wallet} is ready! [Claim it here](${reward_link})`;
+              }
+
+              core.notice(noticeMsg);
+
+              await github.rest.issues.createComment({
+                ...context.repo,
+                issue_number: pr_number,
+                body: commentMsg
+              });
+
+            } catch (err) {
+              core.notice(`⚠️ Error processing PR #${pr_number}: ${err.message}`);
+              continue;
+            }
+          }
+
+          core.notice("✅ Batch reward processing completed.");

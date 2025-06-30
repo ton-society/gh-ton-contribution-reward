@@ -166,6 +166,33 @@ All these fields are optional:
 
 ---
 
+## Reward authors of already merged PRs
+
+To reward authors of already merge PRs in the repository in a single batch, use `rewards-for-merged-prs.yml`. Below is a sample action that can be set up in the repo to be launched via GitHub UI (go to `Action` section):
+```yaml
+on:
+  workflow_dispatch:
+    inputs:
+      per_page:
+        description: 'Number of merged PRs to process'
+        required: false
+        default: '100'  # Default value shown in UI
+        type: string
+
+jobs:
+  reward:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: ton-society/gh-ton-contribution-reward/.github/actions/rewards-for-merged-prs@v1
+        with:
+          github_token: ${{ secrets.GITHUB_TOKEN }}
+          x_api_key: ${{ secrets.X_API_KEY }}
+          x_partner_id: ${{ secrets.X_PARTNER_ID }}
+          per_page: ${{ inputs.per_page }}
+          activity_id: 123 # or ${{ secrets.ACTIVITY_ID }}
+```
+
 ## Example Output Comment on PR
 
 > 🎉 @username, your reward for wallet address EQCABC123... is ready! Claim it here
