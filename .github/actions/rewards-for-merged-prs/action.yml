@@ -142,13 +142,45 @@ runs:
                 body: payload
               });
 
+              let reward_link = null;
+
               if (!response.ok) {
-                core.notice(`❌ Failed to reward PR #${pr_number}. HTTP ${response.status}. Continuing...`);
-                continue;
+                if (response.status === 409) {
+                  const result = await response.json();
+                  reward_link = result?.data?.reward_link_url;
+
+                  if (reward_link) {
+                    const linkAlreadyCommented = comments.data.some(comment =>
+                      comment.body.includes(reward_link)
+                    );
+
+                    if (!linkAlreadyCommented) {
+                      const commentMsg = wallet
+                        ? `🎉 @${user_login}, your reward for wallet address ${wallet} is ready! [Claim it here](${reward_link})`
+                        : `🎉 @${user_login}, your reward is ready! [Claim it here](${reward_link})`;
+
+                      await github.rest.issues.createComment({
+                        ...context.repo,
+                        issue_number: pr_number,
+                        body: commentMsg
+                      });
+
+                      core.notice(`⚠️ Reward already exists for PR #${pr_number}. Commented the existing reward link: ${reward_link}`);
+                    } else {
+                      core.notice(`⚠️ Reward already exists for PR #${pr_number} and was already commented: ${reward_link}`);
+                    }
+                  } else {
+                    core.notice(`❌ 409 response received but no reward link returned for PR #${pr_number}.`);
+                  }
+                  continue;
+                } else {
+                  core.notice(`❌ Failed to reward PR #${pr_number}. HTTP ${response.status}. Continuing...`);
+                  continue;
+                }
               }
 
               const result = await response.json();
-              const reward_link = result.data.reward_link_url;
+              reward_link = result.data.reward_link_url;
 
               let noticeMsg = `🎉 Reward issued for PR #${pr_number} with score=${score}: ${reward_link}`;
               let commentMsg = `🎉 @${user_login}, your reward is ready! [Claim it here](${reward_link})`;
